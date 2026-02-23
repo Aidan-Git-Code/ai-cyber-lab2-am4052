@@ -31,7 +31,7 @@ def load_dataset(
         X_train, X_test, y_train, y_test, feature_names
     """
     if filepath is None:
-        for name in ("phishing.csv", "url_dataset.csv", "train.csv"):
+        for name in ("phishing.csv", "dataset_phishing.csv", "url_dataset.csv", "train.csv"):
             candidate = os.path.join(DEFAULT_RAW_DIR, name)
             if os.path.isfile(candidate):
                 filepath = candidate
@@ -52,6 +52,10 @@ def load_dataset(
 
     df = pd.read_csv(filepath)
 
+    # Use "status" as label if dataset has it (e.g. legitimate/phishing)
+    if label_col not in df.columns and "status" in df.columns:
+        label_col = "status"
+
     # Basic cleaning: drop rows with missing target
     if label_col not in df.columns:
         raise ValueError(
@@ -59,12 +63,16 @@ def load_dataset(
         )
     df = df.dropna(subset=[label_col])
 
-    # Ensure binary numeric labels
-    y = np.asarray(df[label_col]).astype(int)
-    if set(np.unique(y)) - {0, 1}:
-        # Map common string labels
-        mapping = {"benign": 0, "phishing": 1, "legitimate": 0, "safe": 0}
-        y = np.array([mapping.get(str(v).lower(), v) for v in y]).astype(int)
+    # Ensure binary numeric labels (support string labels like legitimate/phishing)
+    raw_labels = np.asarray(df[label_col])
+    str_mapping = {"benign": 0, "phishing": 1, "legitimate": 0, "safe": 0}
+    try:
+        y = raw_labels.astype(int)
+    except (ValueError, TypeError):
+        y = np.array([str_mapping.get(str(v).lower(), 0) for v in raw_labels]).astype(int)
+    else:
+        if set(np.unique(y)) - {0, 1}:
+            y = np.array([str_mapping.get(str(v).lower(), v) for v in raw_labels]).astype(int)
 
     # Feature matrix: all numeric columns except label
     exclude = [label_col, "url", "email", "id"]  # common non-feature columns
